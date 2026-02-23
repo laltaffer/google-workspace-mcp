@@ -1,4 +1,4 @@
-# Google Workspace MCP Server
+# Google Workspace MCP Server for Claude Desktop
 
 A TypeScript MCP (Model Context Protocol) server that gives Claude Desktop read/write access to Google Docs, Sheets, and Drive.
 
