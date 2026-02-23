@@ -5,7 +5,7 @@ const mockValuesUpdate = vi.fn();
 const mockValuesAppend = vi.fn();
 const mockValuesClear = vi.fn();
 const mockSpreadsheetsCreate = vi.fn();
-const mockFilesDelete = vi.fn();
+const mockFilesUpdate = vi.fn();
 
 vi.mock('googleapis', () => ({
   google: {
@@ -21,7 +21,7 @@ vi.mock('googleapis', () => ({
       },
     }),
     drive: vi.fn().mockReturnValue({
-      files: { delete: mockFilesDelete },
+      files: { update: mockFilesUpdate },
     }),
   },
 }));

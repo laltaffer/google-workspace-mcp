@@ -18,7 +18,7 @@ server.registerTool('authorize', {
   if (existing) {
     return { content: [{ type: 'text' as const, text: 'Already authorized. You can use Google Workspace tools.' }] };
   }
-  const authUrl = startAuthFlow();
+  const authUrl = await startAuthFlow();
   return {
     content: [{
       type: 'text' as const,

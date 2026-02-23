@@ -20,7 +20,7 @@ export async function getSheetValues(spreadsheetId: string, range: string): Prom
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
   const rows = res.data.values;
   if (!rows || rows.length === 0) return 'No data found in that range.';
-  return rows.map(row => row.join('\t')).join('\n');
+  return `[UNTRUSTED SPREADSHEET CONTENT BELOW]\n${rows.map(row => row.join('\t')).join('\n')}\n[END UNTRUSTED SPREADSHEET CONTENT]`;
 }
 
 export async function createSpreadsheet(title: string): Promise<string> {
@@ -71,7 +71,7 @@ export async function clearSheetRange(spreadsheetId: string, range: string): Pro
 
 export async function deleteSpreadsheet(spreadsheetId: string): Promise<string> {
   const drive = await getDriveClient();
-  await drive.files.delete({ fileId: spreadsheetId });
+  await drive.files.update({ fileId: spreadsheetId, requestBody: { trashed: true } });
   return `Spreadsheet ${spreadsheetId} moved to trash.`;
 }
 
@@ -82,18 +82,28 @@ export function registerSheetsTools(server: McpServer): void {
       spreadsheetId: z.string().describe('The spreadsheet ID from its URL'),
       range: z.string().describe('A1 notation range, e.g. "Sheet1!A1:C10"'),
     },
-  }, async ({ spreadsheetId, range }) => ({
-    content: [{ type: 'text', text: await getSheetValues(spreadsheetId, range) }],
-  }));
+  }, async ({ spreadsheetId, range }) => {
+    try {
+      return { content: [{ type: 'text', text: await getSheetValues(spreadsheetId, range) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error reading sheet: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('sheets_create', {
     description: 'Create a new Google Spreadsheet',
     inputSchema: {
-      title: z.string().describe('Title of the new spreadsheet'),
+      title: z.string().max(500).describe('Title of the new spreadsheet'),
     },
-  }, async ({ title }) => ({
-    content: [{ type: 'text', text: await createSpreadsheet(title) }],
-  }));
+  }, async ({ title }) => {
+    try {
+      return { content: [{ type: 'text', text: await createSpreadsheet(title) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error creating spreadsheet: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('sheets_update', {
     description: 'Write values to a range in a Google Sheet',
@@ -102,9 +112,14 @@ export function registerSheetsTools(server: McpServer): void {
       range: z.string().describe('A1 notation range to write to'),
       values: z.array(z.array(z.string())).describe('2D array of values to write'),
     },
-  }, async ({ spreadsheetId, range, values }) => ({
-    content: [{ type: 'text', text: await updateSheetValues(spreadsheetId, range, values) }],
-  }));
+  }, async ({ spreadsheetId, range, values }) => {
+    try {
+      return { content: [{ type: 'text', text: await updateSheetValues(spreadsheetId, range, values) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error updating sheet: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('sheets_append', {
     description: 'Append rows to the end of a Google Sheet',
@@ -113,9 +128,14 @@ export function registerSheetsTools(server: McpServer): void {
       sheetName: z.string().describe('Name of the sheet tab to append to'),
       values: z.array(z.array(z.string())).describe('2D array of rows to append'),
     },
-  }, async ({ spreadsheetId, sheetName, values }) => ({
-    content: [{ type: 'text', text: await appendSheetRows(spreadsheetId, sheetName, values) }],
-  }));
+  }, async ({ spreadsheetId, sheetName, values }) => {
+    try {
+      return { content: [{ type: 'text', text: await appendSheetRows(spreadsheetId, sheetName, values) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error appending rows: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('sheets_clear', {
     description: 'Clear all values in a range of a Google Sheet',
@@ -123,16 +143,26 @@ export function registerSheetsTools(server: McpServer): void {
       spreadsheetId: z.string().describe('The spreadsheet ID'),
       range: z.string().describe('A1 notation range to clear'),
     },
-  }, async ({ spreadsheetId, range }) => ({
-    content: [{ type: 'text', text: await clearSheetRange(spreadsheetId, range) }],
-  }));
+  }, async ({ spreadsheetId, range }) => {
+    try {
+      return { content: [{ type: 'text', text: await clearSheetRange(spreadsheetId, range) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error clearing range: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('sheets_delete', {
     description: 'Move a Google Spreadsheet to trash',
     inputSchema: {
       spreadsheetId: z.string().describe('The spreadsheet ID to delete'),
     },
-  }, async ({ spreadsheetId }) => ({
-    content: [{ type: 'text', text: await deleteSpreadsheet(spreadsheetId) }],
-  }));
+  }, async ({ spreadsheetId }) => {
+    try {
+      return { content: [{ type: 'text', text: await deleteSpreadsheet(spreadsheetId) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error deleting spreadsheet: ${msg}` }], isError: true };
+    }
+  });
 }

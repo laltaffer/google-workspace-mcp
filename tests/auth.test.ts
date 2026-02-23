@@ -12,6 +12,7 @@ vi.mock('googleapis', () => ({
         generateAuthUrl: vi.fn().mockReturnValue('https://accounts.google.com/o/oauth2/auth?mock'),
         getToken: vi.fn().mockResolvedValue({ tokens: { access_token: 'tok', refresh_token: 'ref' } }),
         setCredentials: vi.fn(),
+        on: vi.fn(),
       })),
     },
   },
@@ -51,10 +52,11 @@ describe('auth', () => {
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
       const { saveTokens } = await import('../src/auth.js');
       await saveTokens({ access_token: 'abc' });
-      expect(fs.mkdir).toHaveBeenCalledWith(path.dirname(TOKENS_PATH), { recursive: true });
+      expect(fs.mkdir).toHaveBeenCalledWith(path.dirname(TOKENS_PATH), { recursive: true, mode: 0o700 });
       expect(fs.writeFile).toHaveBeenCalledWith(
         TOKENS_PATH,
-        expect.stringContaining('access_token')
+        expect.stringContaining('access_token'),
+        { mode: 0o600 }
       );
     });
   });
