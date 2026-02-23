@@ -28,7 +28,7 @@ export async function getDoc(documentId: string): Promise<string> {
   const res = await docs.documents.get({ documentId });
   const doc = res.data;
   const text = extractText(doc.body?.content ?? []);
-  return `Title: ${doc.title}\n\n${text}`;
+  return `Title: ${doc.title}\n\n[UNTRUSTED DOCUMENT CONTENT BELOW]\n${text}\n[END UNTRUSTED DOCUMENT CONTENT]`;
 }
 
 export async function createDoc(title: string): Promise<string> {
@@ -73,18 +73,9 @@ export async function replaceInDoc(
   return `Replaced ${changed} occurrence(s) of "${oldText}" with "${newText}".`;
 }
 
-export async function batchUpdateDoc(
-  documentId: string,
-  requests: object[]
-): Promise<string> {
-  const docs = await getDocsClient();
-  await docs.documents.batchUpdate({ documentId, requestBody: { requests } });
-  return `Batch update applied to document ${documentId}.`;
-}
-
 export async function deleteDoc(documentId: string): Promise<string> {
   const drive = await getDriveClient();
-  await drive.files.delete({ fileId: documentId });
+  await drive.files.update({ fileId: documentId, requestBody: { trashed: true } });
   return `Document ${documentId} moved to trash.`;
 }
 
@@ -94,56 +85,71 @@ export function registerDocsTools(server: McpServer): void {
     inputSchema: {
       documentId: z.string().describe('The document ID from its URL'),
     },
-  }, async ({ documentId }) => ({
-    content: [{ type: 'text', text: await getDoc(documentId) }],
-  }));
+  }, async ({ documentId }) => {
+    try {
+      return { content: [{ type: 'text', text: await getDoc(documentId) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error reading document: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('docs_create', {
     description: 'Create a new Google Doc',
     inputSchema: {
-      title: z.string().describe('Title of the new document'),
+      title: z.string().max(500).describe('Title of the new document'),
     },
-  }, async ({ title }) => ({
-    content: [{ type: 'text', text: await createDoc(title) }],
-  }));
+  }, async ({ title }) => {
+    try {
+      return { content: [{ type: 'text', text: await createDoc(title) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error creating document: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('docs_append', {
     description: 'Append text to the end of a Google Doc',
     inputSchema: {
       documentId: z.string().describe('The document ID'),
-      text: z.string().describe('Text to append'),
+      text: z.string().max(100000).describe('Text to append'),
     },
-  }, async ({ documentId, text }) => ({
-    content: [{ type: 'text', text: await appendToDoc(documentId, text) }],
-  }));
+  }, async ({ documentId, text }) => {
+    try {
+      return { content: [{ type: 'text', text: await appendToDoc(documentId, text) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error appending to document: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('docs_replace', {
     description: 'Find and replace text in a Google Doc',
     inputSchema: {
       documentId: z.string().describe('The document ID'),
-      oldText: z.string().describe('Text to find'),
-      newText: z.string().describe('Replacement text'),
+      oldText: z.string().max(10000).describe('Text to find'),
+      newText: z.string().max(100000).describe('Replacement text'),
     },
-  }, async ({ documentId, oldText, newText }) => ({
-    content: [{ type: 'text', text: await replaceInDoc(documentId, oldText, newText) }],
-  }));
-
-  server.registerTool('docs_batch_update', {
-    description: 'Apply raw Google Docs API batchUpdate requests (for advanced edits)',
-    inputSchema: {
-      documentId: z.string().describe('The document ID'),
-      requests: z.array(z.record(z.unknown())).describe('Array of Google Docs API request objects'),
-    },
-  }, async ({ documentId, requests }) => ({
-    content: [{ type: 'text', text: await batchUpdateDoc(documentId, requests) }],
-  }));
+  }, async ({ documentId, oldText, newText }) => {
+    try {
+      return { content: [{ type: 'text', text: await replaceInDoc(documentId, oldText, newText) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error replacing text: ${msg}` }], isError: true };
+    }
+  });
 
   server.registerTool('docs_delete', {
     description: 'Move a Google Doc to trash',
     inputSchema: {
       documentId: z.string().describe('The document ID to delete'),
     },
-  }, async ({ documentId }) => ({
-    content: [{ type: 'text', text: await deleteDoc(documentId) }],
-  }));
+  }, async ({ documentId }) => {
+    try {
+      return { content: [{ type: 'text', text: await deleteDoc(documentId) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error deleting document: ${msg}` }], isError: true };
+    }
+  });
 }

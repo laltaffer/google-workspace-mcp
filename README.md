@@ -2,7 +2,7 @@
 
 A TypeScript MCP (Model Context Protocol) server that gives Claude Desktop read/write access to Google Docs, Sheets, and Drive.
 
-18 tools across three services — create, edit, search, and manage your Google Workspace files directly from Claude.
+17 tools across three services — create, edit, search, and manage your Google Workspace files directly from Claude.
 
 ## Features
 
@@ -11,7 +11,6 @@ A TypeScript MCP (Model Context Protocol) server that gives Claude Desktop read/
 - `docs_create` — Create a new document
 - `docs_append` — Append text to a document
 - `docs_replace` — Find and replace text
-- `docs_batch_update` — Apply raw Google Docs API requests
 - `docs_delete` — Move a document to trash
 
 **Google Sheets**

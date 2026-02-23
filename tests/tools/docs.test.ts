@@ -14,7 +14,7 @@ vi.mock('googleapis', () => ({
       },
     }),
     drive: vi.fn().mockReturnValue({
-      files: { delete: vi.fn().mockResolvedValue({}) },
+      files: { update: vi.fn().mockResolvedValue({}) },
     }),
   },
 }));
