@@ -26,8 +26,9 @@ export async function listFiles(folderId?: string, pageSize = 20): Promise<strin
 
 export async function searchFiles(query: string, pageSize = 20): Promise<string> {
   const drive = await getDriveClient();
+  const safeQuery = query.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const res = await drive.files.list({
-    q: `name contains '${query}' and trashed = false`,
+    q: `name contains '${safeQuery}' and trashed = false`,
     pageSize,
     fields: 'files(id,name,mimeType,modifiedTime)',
   });
