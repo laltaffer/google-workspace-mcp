@@ -1,8 +1,8 @@
 # Google Workspace MCP Server for Claude Desktop
 
-A TypeScript MCP (Model Context Protocol) server that gives Claude Desktop read/write access to Google Docs, Sheets, and Drive.
+A TypeScript MCP (Model Context Protocol) server that gives Claude Desktop read/write access to Google Docs, Sheets, Drive, and Calendar.
 
-17 tools across three services — create, edit, search, and manage your Google Workspace files directly from Claude.
+24 tools across four services — create, edit, search, and manage your Google Workspace files and events directly from Claude.
 
 ## Features
 
@@ -29,6 +29,15 @@ A TypeScript MCP (Model Context Protocol) server that gives Claude Desktop read/
 - `drive_move` — Move a file to a different folder
 - `drive_delete` — Move a file to trash
 
+**Google Calendar**
+- `calendar_list` — List all calendars
+- `calendar_events` — List upcoming events
+- `calendar_search` — Search events by text
+- `calendar_get` — Get full event details
+- `calendar_create` — Create a new event
+- `calendar_update` — Update an existing event
+- `calendar_delete` — Delete an event
+
 ## Prerequisites
 
 - Node.js 18 or higher
@@ -49,6 +58,7 @@ Enable the following APIs for your project:
 - [Google Docs API](https://console.cloud.google.com/flows/enableapi?apiid=docs.googleapis.com)
 - [Google Drive API](https://console.cloud.google.com/flows/enableapi?apiid=drive.googleapis.com)
 - [Google Sheets API](https://console.cloud.google.com/flows/enableapi?apiid=sheets.googleapis.com)
+- [Google Calendar API](https://console.cloud.google.com/flows/enableapi?apiid=calendar-json.googleapis.com)
 
 ### 2. Install and Build
 
@@ -96,6 +106,8 @@ Claude will return a Google authorization URL. Open it in your browser, sign in,
 
 You can now use all Google Workspace tools in Claude.
 
+> **Upgrading?** If you previously authorized without Calendar support, delete `~/.google-workspace-mcp/tokens.json` and re-authorize to grant calendar permissions.
+
 ## Usage Examples
 
 > "List my Google Drive files"
@@ -108,6 +120,10 @@ You can now use all Google Workspace tools in Claude.
 
 > "Append a new row to my budget spreadsheet: ['March', '4500', 'Rent']"
 
+> "What's on my calendar this week?"
+
+> "Create a meeting called 'Design Review' tomorrow at 2pm for 1 hour"
+
 ## Development
 
 ```bash
@@ -116,7 +132,7 @@ npm run test:watch  # watch mode
 npm run build     # compile TypeScript
 ```
 
-The project uses [vitest](https://vitest.dev/) for testing with mocked googleapis clients. 19 tests across auth, Drive, Docs, and Sheets modules.
+The project uses [vitest](https://vitest.dev/) for testing with mocked googleapis clients. 29 tests across auth, Drive, Docs, Sheets, and Calendar modules.
 
 ## Token Storage
 
