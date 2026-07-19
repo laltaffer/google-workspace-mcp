@@ -9,12 +9,16 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "googleapis": "^144.0.0",
+    "google-auth-library": "^10.9.0",
+    "googleapis": "^173.0.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
+  },
+  "overrides": {
+    "google-auth-library": "$google-auth-library"
   }
 }
