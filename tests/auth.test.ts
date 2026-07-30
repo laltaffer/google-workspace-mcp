@@ -61,6 +61,60 @@ describe('auth', () => {
     });
   });
 
+  describe('clearTokens', () => {
+    it('moves the tokens file aside', async () => {
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+      const { clearTokens } = await import('../src/auth.js');
+      await clearTokens();
+      expect(fs.rename).toHaveBeenCalledWith(TOKENS_PATH, `${TOKENS_PATH}.invalid`);
+    });
+
+    it('does not throw when there is no tokens file', async () => {
+      vi.mocked(fs.rename).mockRejectedValue(new Error('ENOENT'));
+      const { clearTokens } = await import('../src/auth.js');
+      await expect(clearTokens()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('validateCredentials', () => {
+    it('returns true when the access token refreshes and Google accepts it', async () => {
+      const client = {
+        getAccessToken: vi.fn().mockResolvedValue({ token: 'live-token' }),
+        getTokenInfo: vi.fn().mockResolvedValue({ scopes: [] }),
+      };
+      const { validateCredentials } = await import('../src/auth.js');
+      expect(await validateCredentials(client as any)).toBe(true);
+      expect(client.getTokenInfo).toHaveBeenCalledWith('live-token');
+    });
+
+    it('returns false when the refresh token was revoked', async () => {
+      const client = {
+        getAccessToken: vi.fn().mockRejectedValue(new Error('invalid_grant')),
+        getTokenInfo: vi.fn(),
+      };
+      const { validateCredentials } = await import('../src/auth.js');
+      expect(await validateCredentials(client as any)).toBe(false);
+    });
+
+    it('returns false when Google rejects the access token', async () => {
+      const client = {
+        getAccessToken: vi.fn().mockResolvedValue({ token: 'stale-token' }),
+        getTokenInfo: vi.fn().mockRejectedValue(new Error('invalid_token')),
+      };
+      const { validateCredentials } = await import('../src/auth.js');
+      expect(await validateCredentials(client as any)).toBe(false);
+    });
+
+    it('returns false when no access token is available', async () => {
+      const client = {
+        getAccessToken: vi.fn().mockResolvedValue({ token: null }),
+        getTokenInfo: vi.fn(),
+      };
+      const { validateCredentials } = await import('../src/auth.js');
+      expect(await validateCredentials(client as any)).toBe(false);
+    });
+  });
+
   describe('createOAuthClient', () => {
     it('throws if env vars are missing', async () => {
       vi.unstubAllEnvs();

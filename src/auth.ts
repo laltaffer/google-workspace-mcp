@@ -42,6 +42,30 @@ export async function saveTokens(tokens: object): Promise<void> {
   await fs.writeFile(TOKENS_PATH, JSON.stringify(tokens, null, 2), { mode: 0o600 });
 }
 
+// Moves an unusable token file aside so a stale file cannot keep reporting
+// "authorized" or block a fresh auth flow. Safe to call when no file exists.
+export async function clearTokens(): Promise<void> {
+  try {
+    await fs.rename(TOKENS_PATH, `${TOKENS_PATH}.invalid`);
+  } catch {
+    // Nothing to move aside.
+  }
+}
+
+// Checks that stored credentials still work by refreshing the access token if
+// needed and asking Google whether it is live. Returns false on invalid_grant
+// (e.g. the refresh token was revoked) or any other auth failure.
+export async function validateCredentials(client: OAuth2Client): Promise<boolean> {
+  try {
+    const { token } = await client.getAccessToken();
+    if (!token) return false;
+    await client.getTokenInfo(token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getAuthenticatedClient(): Promise<OAuth2Client | null> {
   const tokens = await loadTokens();
   if (!tokens) return null;
