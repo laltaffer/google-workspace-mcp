@@ -1,6 +1,6 @@
-# Google Workspace MCP Server for Claude Desktop
+# Google Workspace MCP Server
 
-A TypeScript MCP (Model Context Protocol) server that gives Claude Desktop read/write access to Google Docs, Sheets, Drive, and Calendar.
+A TypeScript MCP (Model Context Protocol) server that gives Claude read/write access to Google Docs, Sheets, Drive, and Calendar. Works with Claude Code and Claude Desktop.
 
 24 tools across four services — create, edit, search, and manage your Google Workspace files and events directly from Claude.
 
@@ -69,9 +69,18 @@ npm install
 npm run build
 ```
 
-### 3. Configure Claude Desktop
+### 3. Register the server
 
-Add the following to your Claude Desktop config file:
+**Claude Code** — one command, user scope so it loads in every project:
+
+```bash
+claude mcp add google-workspace --scope user \
+  -e GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com \
+  -e GOOGLE_CLIENT_SECRET=your-client-secret \
+  -- node /absolute/path/to/google-workspace-mcp/dist/index.js
+```
+
+**Claude Desktop** — add the following to your config file:
 
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
@@ -93,9 +102,9 @@ Add the following to your Claude Desktop config file:
 
 Replace `/absolute/path/to/google-workspace-mcp` with the actual path where you cloned the repo.
 
-### 4. Restart Claude Desktop
+### 4. Restart the client
 
-Fully quit and reopen Claude Desktop.
+Claude Code picks the server up in new sessions. For Claude Desktop, fully quit and reopen it.
 
 ### 5. Authorize
 
