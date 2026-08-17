@@ -145,3 +145,7 @@ OAuth tokens are stored locally at `~/.google-workspace-mcp/tokens.json`. They a
 - [googleapis](https://github.com/googleapis/google-api-nodejs-client)
 - [zod](https://zod.dev/)
 - [vitest](https://vitest.dev/)
+
+## License
+
+MIT.
