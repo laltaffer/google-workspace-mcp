@@ -1,8 +1,8 @@
 # Google Workspace MCP Server
 
-A TypeScript MCP (Model Context Protocol) server that gives Claude read/write access to Google Docs, Sheets, Drive, and Calendar. Works with Claude Code and Claude Desktop.
+A TypeScript MCP (Model Context Protocol) server that gives Claude read/write access to Google Docs, Sheets, Drive, Calendar, and file comments. Works with Claude Code and Claude Desktop.
 
-24 tools across four services — create, edit, search, and manage your Google Workspace files and events directly from Claude.
+27 tools across five services — create, edit, search, and manage your Google Workspace files and events directly from Claude.
 
 ## Features
 
@@ -37,6 +37,11 @@ A TypeScript MCP (Model Context Protocol) server that gives Claude read/write ac
 - `calendar_create` — Create a new event
 - `calendar_update` — Update an existing event
 - `calendar_delete` — Delete an event
+
+**Comments** (Docs, Sheets, and Slides)
+- `comments_list` — List open comments with their replies (`includeResolved` to see all)
+- `comments_get` — Get one comment and its full thread
+- `comments_reply` — Reply to a comment, optionally resolving it
 
 ## Prerequisites
 
@@ -133,6 +138,8 @@ You can now use all Google Workspace tools in Claude.
 
 > "Create a meeting called 'Design Review' tomorrow at 2pm for 1 hour"
 
+> "What comments are open on the doc with ID 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms?"
+
 ## Development
 
 ```bash
@@ -141,7 +148,7 @@ npm run test:watch  # watch mode
 npm run build     # compile TypeScript
 ```
 
-The project uses [vitest](https://vitest.dev/) for testing with mocked googleapis clients. 29 tests across auth, Drive, Docs, Sheets, and Calendar modules.
+The project uses [vitest](https://vitest.dev/) for testing with mocked googleapis clients. 41 tests across auth, Drive, Docs, Sheets, Calendar, and Comments modules.
 
 ## Token Storage
 

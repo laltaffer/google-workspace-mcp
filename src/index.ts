@@ -5,6 +5,7 @@ import { registerDriveTools } from './tools/drive.js';
 import { registerDocsTools } from './tools/docs.js';
 import { registerSheetsTools } from './tools/sheets.js';
 import { registerCalendarTools } from './tools/calendar.js';
+import { registerCommentsTools } from './tools/comments.js';
 
 const server = new McpServer({
   name: 'google-workspace',
@@ -37,6 +38,7 @@ registerDriveTools(server);
 registerDocsTools(server);
 registerSheetsTools(server);
 registerCalendarTools(server);
+registerCommentsTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
