@@ -11,9 +11,9 @@ TypeScript MCP server: read/write Google Docs, Sheets, Drive, Calendar, and file
 ```bash
 npm install
 npm run build
-npm test
-node dist/index.js    # stdio MCP; needs GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+npm test               # vitest suite (mocked googleapis)
+node dist/index.js    # stdio MCP; needs GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET, registered user-scope in Claude Code as google-workspace
 ```
-Re-auth via the `authorize` MCP tool when refresh tokens expire (`invalid_grant`).
+Re-auth via the `authorize` MCP tool when refresh tokens expire (`invalid_grant`): open the URL it returns and approve.
 
 Durable status (Testing vs publish constraints): `_brain.md`.
