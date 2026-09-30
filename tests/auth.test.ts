@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 
 // Mock fs and googleapis before importing auth
 vi.mock('fs/promises');
+vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
 vi.mock('googleapis', () => ({
   google: {
     auth: {
@@ -120,6 +122,28 @@ describe('auth', () => {
       vi.unstubAllEnvs();
       const { createOAuthClient } = await import('../src/auth.js');
       expect(() => createOAuthClient()).toThrow('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
+    });
+
+    it('falls back to the macOS Keychain when the secret env var is unset', async () => {
+      vi.stubEnv('GOOGLE_CLIENT_SECRET', '');
+      vi.mocked(execFileSync).mockReturnValue('keychain-secret\n' as any);
+      const { google } = await import('googleapis');
+      const { createOAuthClient } = await import('../src/auth.js');
+      createOAuthClient();
+      if (process.platform === 'darwin') {
+        expect(execFileSync).toHaveBeenCalledWith(
+          'security',
+          ['find-generic-password', '-s', 'google-workspace-mcp', '-a', 'client-secret', '-w'],
+          expect.anything(),
+        );
+        expect(google.auth.OAuth2).toHaveBeenCalledWith('test-client-id', 'keychain-secret', undefined);
+      }
+    });
+
+    it('prefers the env secret over the Keychain', async () => {
+      const { createOAuthClient } = await import('../src/auth.js');
+      createOAuthClient();
+      expect(execFileSync).not.toHaveBeenCalled();
     });
 
     it('returns OAuth2 client when env vars are present', async () => {

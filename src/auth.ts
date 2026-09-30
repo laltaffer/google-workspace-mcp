@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import http from 'http';
+import { execFileSync } from 'child_process';
 import os from 'os';
 import type { AddressInfo } from 'net';
 
@@ -19,11 +20,32 @@ const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
 ];
 
+export const KEYCHAIN_SERVICE = 'google-workspace-mcp';
+export const KEYCHAIN_ACCOUNT = 'client-secret';
+
+// Reads the OAuth client secret from the macOS Keychain so it never has to sit
+// in an MCP config file. Returns undefined on other platforms or if no entry exists.
+function readSecretFromKeychain(): string | undefined {
+  if (process.platform !== 'darwin') return undefined;
+  try {
+    const out = execFileSync(
+      'security',
+      ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_ACCOUNT, '-w'],
+      { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    return out.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createOAuthClient(redirectUri?: string): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || readSecretFromKeychain();
   if (!clientId || !clientSecret) {
-    throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars are required');
+    throw new Error(
+      'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required (the secret may also come from the macOS Keychain, service google-workspace-mcp)',
+    );
   }
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
