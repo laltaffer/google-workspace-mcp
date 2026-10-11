@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { google } from 'googleapis';
 import { z } from 'zod';
-import { getAuthenticatedClient } from '../auth.js';
+import { getAuthenticatedClient, describeError } from '../auth.js';
 
 const FILE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -97,7 +97,7 @@ export function registerDriveTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await listFiles(folderId, pageSize) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error listing files: ${msg}` }], isError: true };
     }
   });
@@ -112,7 +112,7 @@ export function registerDriveTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await searchFiles(query, pageSize) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error searching files: ${msg}` }], isError: true };
     }
   });
@@ -126,7 +126,7 @@ export function registerDriveTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await getFile(fileId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error getting file: ${msg}` }], isError: true };
     }
   });
@@ -141,7 +141,7 @@ export function registerDriveTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await createFolder(name, parentId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error creating folder: ${msg}` }], isError: true };
     }
   });
@@ -156,7 +156,7 @@ export function registerDriveTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await moveFile(fileId, newParentId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error moving file: ${msg}` }], isError: true };
     }
   });
@@ -170,7 +170,7 @@ export function registerDriveTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await deleteFile(fileId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error deleting file: ${msg}` }], isError: true };
     }
   });

@@ -87,6 +87,16 @@ export async function clearTokens(): Promise<void> {
   }
 }
 
+// Turns Google's bare refresh failure into an actionable message. Tool error
+// handlers run every caught error through this.
+export function describeError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/invalid_grant|invalid_rapt|Token has been expired or revoked/i.test(msg)) {
+    return 'Stored credentials have expired or been revoked. Run the authorize tool to sign in again.';
+  }
+  return msg;
+}
+
 // Checks that stored credentials still work by refreshing the access token if
 // needed and asking Google whether it is live. Returns false on invalid_grant
 // (e.g. the refresh token was revoked) or any other auth failure.

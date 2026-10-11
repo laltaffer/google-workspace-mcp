@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { google } from 'googleapis';
 import { z } from 'zod';
-import { getAuthenticatedClient } from '../auth.js';
+import { getAuthenticatedClient, describeError } from '../auth.js';
 
 async function getSheetsClient() {
   const auth = await getAuthenticatedClient();
@@ -86,7 +86,7 @@ export function registerSheetsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await getSheetValues(spreadsheetId, range) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error reading sheet: ${msg}` }], isError: true };
     }
   });
@@ -100,7 +100,7 @@ export function registerSheetsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await createSpreadsheet(title) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error creating spreadsheet: ${msg}` }], isError: true };
     }
   });
@@ -116,7 +116,7 @@ export function registerSheetsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await updateSheetValues(spreadsheetId, range, values) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error updating sheet: ${msg}` }], isError: true };
     }
   });
@@ -132,7 +132,7 @@ export function registerSheetsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await appendSheetRows(spreadsheetId, sheetName, values) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error appending rows: ${msg}` }], isError: true };
     }
   });
@@ -147,7 +147,7 @@ export function registerSheetsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await clearSheetRange(spreadsheetId, range) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error clearing range: ${msg}` }], isError: true };
     }
   });
@@ -161,7 +161,7 @@ export function registerSheetsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await deleteSpreadsheet(spreadsheetId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error deleting spreadsheet: ${msg}` }], isError: true };
     }
   });

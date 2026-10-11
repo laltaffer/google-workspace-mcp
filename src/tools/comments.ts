@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { google } from 'googleapis';
 import { z } from 'zod';
-import { getAuthenticatedClient } from '../auth.js';
+import { getAuthenticatedClient, describeError } from '../auth.js';
 import type { drive_v3 } from 'googleapis';
 
 // Comments live in the Drive API regardless of file type, so these tools work
@@ -90,7 +90,7 @@ export function registerCommentsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await listComments(fileId, includeResolved, pageSize) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error listing comments: ${msg}` }], isError: true };
     }
   });
@@ -105,7 +105,7 @@ export function registerCommentsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await getComment(fileId, commentId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error getting comment: ${msg}` }], isError: true };
     }
   });
@@ -122,7 +122,7 @@ export function registerCommentsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await replyToComment(fileId, commentId, content, resolve) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error replying to comment: ${msg}` }], isError: true };
     }
   });

@@ -28,6 +28,7 @@ vi.mock('googleapis', () => ({
 
 vi.mock('../../src/auth.js', () => ({
   getAuthenticatedClient: vi.fn().mockResolvedValue({}),
+  describeError: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
 const { getSheetValues, createSpreadsheet, updateSheetValues, appendSheetRows, clearSheetRange } =

@@ -1,7 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { google } from 'googleapis';
 import { z } from 'zod';
-import { getAuthenticatedClient } from '../auth.js';
+import { getAuthenticatedClient, describeError } from '../auth.js';
+
+export type SendUpdates = 'all' | 'externalOnly' | 'none';
 
 export interface EventInput {
   summary: string;
@@ -10,6 +12,7 @@ export interface EventInput {
   description?: string;
   location?: string;
   attendees?: string[];
+  sendUpdates?: SendUpdates;
 }
 
 export interface EventUpdate {
@@ -18,6 +21,7 @@ export interface EventUpdate {
   end?: string;
   description?: string;
   location?: string;
+  sendUpdates?: SendUpdates;
 }
 
 async function getCalendarClient() {
@@ -125,6 +129,7 @@ export async function createEvent(calendarId: string, input: EventInput): Promis
   const cal = await getCalendarClient();
   const res = await cal.events.insert({
     calendarId,
+    sendUpdates: input.sendUpdates ?? 'none',
     requestBody: {
       summary: input.summary,
       start: { dateTime: input.start },
@@ -153,6 +158,7 @@ export async function updateEvent(
   const res = await cal.events.patch({
     calendarId,
     eventId,
+    sendUpdates: updates.sendUpdates ?? 'none',
     requestBody,
     fields: 'id,summary',
   });
@@ -173,7 +179,7 @@ export function registerCalendarTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await listCalendars() }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error listing calendars: ${msg}` }], isError: true };
     }
   });
@@ -190,7 +196,7 @@ export function registerCalendarTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await listEvents(calendarId ?? 'primary', timeMin, timeMax, maxResults) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error listing events: ${msg}` }], isError: true };
     }
   });
@@ -208,7 +214,7 @@ export function registerCalendarTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await searchEvents(calendarId ?? 'primary', query, timeMin, timeMax, maxResults) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error searching events: ${msg}` }], isError: true };
     }
   });
@@ -223,7 +229,7 @@ export function registerCalendarTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await getEvent(calendarId ?? 'primary', eventId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error getting event: ${msg}` }], isError: true };
     }
   });
@@ -237,13 +243,14 @@ export function registerCalendarTools(server: McpServer): void {
       description: z.string().max(5000).optional().describe('Event description'),
       location: z.string().max(500).optional().describe('Event location'),
       attendees: z.array(z.string().email()).optional().describe('List of attendee email addresses'),
+      sendUpdates: z.enum(['all', 'externalOnly', 'none']).optional().describe('Whether to email attendees about this change (default none)'),
       calendarId: z.string().optional().describe('Calendar ID (defaults to "primary")'),
     },
-  }, async ({ summary, start, end, description, location, attendees, calendarId }) => {
+  }, async ({ summary, start, end, description, location, attendees, sendUpdates, calendarId }) => {
     try {
-      return { content: [{ type: 'text', text: await createEvent(calendarId ?? 'primary', { summary, start, end, description, location, attendees }) }] };
+      return { content: [{ type: 'text', text: await createEvent(calendarId ?? 'primary', { summary, start, end, description, location, attendees, sendUpdates }) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error creating event: ${msg}` }], isError: true };
     }
   });
@@ -257,13 +264,14 @@ export function registerCalendarTools(server: McpServer): void {
       end: z.string().optional().describe('New end time (ISO 8601)'),
       description: z.string().max(5000).optional().describe('New description'),
       location: z.string().max(500).optional().describe('New location'),
+      sendUpdates: z.enum(['all', 'externalOnly', 'none']).optional().describe('Whether to email attendees about this change (default none)'),
       calendarId: z.string().optional().describe('Calendar ID (defaults to "primary")'),
     },
-  }, async ({ eventId, summary, start, end, description, location, calendarId }) => {
+  }, async ({ eventId, summary, start, end, description, location, sendUpdates, calendarId }) => {
     try {
-      return { content: [{ type: 'text', text: await updateEvent(calendarId ?? 'primary', eventId, { summary, start, end, description, location }) }] };
+      return { content: [{ type: 'text', text: await updateEvent(calendarId ?? 'primary', eventId, { summary, start, end, description, location, sendUpdates }) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error updating event: ${msg}` }], isError: true };
     }
   });
@@ -278,7 +286,7 @@ export function registerCalendarTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await deleteEvent(calendarId ?? 'primary', eventId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error deleting event: ${msg}` }], isError: true };
     }
   });

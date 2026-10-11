@@ -63,6 +63,14 @@ describe('auth', () => {
     });
   });
 
+  describe('describeError', () => {
+    it('rewrites invalid_grant into an authorize hint', async () => {
+      const { describeError } = await import('../src/auth.js');
+      expect(describeError(new Error('invalid_grant'))).toContain('authorize');
+      expect(describeError(new Error('Requested entity was not found.'))).toBe('Requested entity was not found.');
+    });
+  });
+
   describe('clearTokens', () => {
     it('revokes the refresh token and deletes the tokens file', async () => {
       vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ refresh_token: 'ref' }));

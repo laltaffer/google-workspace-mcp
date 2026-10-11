@@ -24,6 +24,7 @@ vi.mock('googleapis', () => ({
 
 vi.mock('../../src/auth.js', () => ({
   getAuthenticatedClient: vi.fn().mockResolvedValue({}),
+  describeError: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
 const {
@@ -168,11 +169,24 @@ describe('calendar tools', () => {
     expect(result).toContain('link: https://calendar.google.com/event?eid=xyz');
     expect(mockEventsInsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        sendUpdates: 'none',
         requestBody: expect.objectContaining({
           attendees: [{ email: 'alice@example.com' }],
         }),
       }),
     );
+  });
+
+  it('createEvent forwards sendUpdates', async () => {
+    mockEventsInsert.mockResolvedValue({ data: { id: 'e', summary: 's' } });
+    await createEvent('cal-1', { summary: 's', start: 'a', end: 'b', sendUpdates: 'all' });
+    expect(mockEventsInsert).toHaveBeenCalledWith(expect.objectContaining({ sendUpdates: 'all' }));
+  });
+
+  it('updateEvent forwards sendUpdates', async () => {
+    mockEventsPatch.mockResolvedValue({ data: { id: 'e', summary: 's' } });
+    await updateEvent('cal-1', 'e', { summary: 's', sendUpdates: 'externalOnly' });
+    expect(mockEventsPatch).toHaveBeenCalledWith(expect.objectContaining({ sendUpdates: 'externalOnly' }));
   });
 
   it('updateEvent returns updated info', async () => {

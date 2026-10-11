@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { google } from 'googleapis';
 import { z } from 'zod';
-import { getAuthenticatedClient } from '../auth.js';
+import { getAuthenticatedClient, describeError } from '../auth.js';
 import type { docs_v1 } from 'googleapis';
 
 async function getDocsClient() {
@@ -147,7 +147,7 @@ export function registerDocsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await getDoc(documentId, includeIndices ?? false) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error reading document: ${msg}` }], isError: true };
     }
   });
@@ -161,7 +161,7 @@ export function registerDocsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await createDoc(title) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error creating document: ${msg}` }], isError: true };
     }
   });
@@ -176,7 +176,7 @@ export function registerDocsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await appendToDoc(documentId, text) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error appending to document: ${msg}` }], isError: true };
     }
   });
@@ -192,7 +192,7 @@ export function registerDocsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await replaceInDoc(documentId, oldText, newText) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error replacing text: ${msg}` }], isError: true };
     }
   });
@@ -207,7 +207,7 @@ export function registerDocsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await batchUpdateDoc(documentId, requests as docs_v1.Schema$Request[]) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error applying batch update: ${msg}` }], isError: true };
     }
   });
@@ -221,7 +221,7 @@ export function registerDocsTools(server: McpServer): void {
     try {
       return { content: [{ type: 'text', text: await deleteDoc(documentId) }] };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describeError(err);
       return { content: [{ type: 'text', text: `Error deleting document: ${msg}` }], isError: true };
     }
   });
