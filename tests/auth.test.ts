@@ -26,6 +26,7 @@ describe('auth', () => {
   beforeEach(() => {
     vi.stubEnv('GOOGLE_CLIENT_ID', 'test-client-id');
     vi.stubEnv('GOOGLE_CLIENT_SECRET', 'test-client-secret');
+    vi.stubEnv('GOOGLE_WORKSPACE_MCP_TOKEN_STORE', 'file');
   });
 
   afterEach(() => {
@@ -60,6 +61,78 @@ describe('auth', () => {
         expect.stringContaining('access_token'),
         { mode: 0o600 }
       );
+    });
+  });
+
+  describe('keychain token store', () => {
+    const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64');
+    const useKeychain = () => vi.stubEnv('GOOGLE_WORKSPACE_MCP_TOKEN_STORE', 'keychain');
+
+    it('loadTokens decodes the Keychain entry', async () => {
+      useKeychain();
+      vi.mocked(execFileSync).mockReturnValue(b64({ access_token: 'k' }) + '\n');
+      const { loadTokens } = await import('../src/auth.js');
+      expect(await loadTokens()).toEqual({ access_token: 'k' });
+      expect(execFileSync).toHaveBeenCalledWith(
+        'security',
+        ['find-generic-password', '-s', 'google-workspace-mcp', '-a', 'tokens', '-w'],
+        expect.anything(),
+      );
+      expect(fs.readFile).not.toHaveBeenCalled();
+    });
+
+    it('loadTokens migrates a legacy tokens file into the Keychain and deletes it', async () => {
+      useKeychain();
+      vi.mocked(execFileSync)
+        .mockImplementationOnce(() => { throw new Error('not found'); })
+        .mockReturnValue('');
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ refresh_token: 'legacy' }));
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+      const { loadTokens } = await import('../src/auth.js');
+      expect(await loadTokens()).toEqual({ refresh_token: 'legacy' });
+      const write = vi.mocked(execFileSync).mock.calls.find(c => c[1]?.[0] === '-i');
+      expect(write).toBeTruthy();
+      expect(String(write![2]!.input)).toContain(`-w ${b64({ refresh_token: 'legacy' })}`);
+      expect(fs.unlink).toHaveBeenCalledWith(TOKENS_PATH);
+    });
+
+    it('loadTokens returns null when neither store has tokens', async () => {
+      useKeychain();
+      vi.mocked(execFileSync).mockImplementation(() => { throw new Error('not found'); });
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
+      const { loadTokens } = await import('../src/auth.js');
+      expect(await loadTokens()).toBeNull();
+    });
+
+    it('saveTokens writes base64 JSON through security -i on stdin, never argv', async () => {
+      useKeychain();
+      vi.mocked(execFileSync).mockReturnValue('');
+      const { saveTokens } = await import('../src/auth.js');
+      await saveTokens({ access_token: 'secret' });
+      const [cmd, args, opts] = vi.mocked(execFileSync).mock.calls.at(-1)!;
+      expect(cmd).toBe('security');
+      expect(args).toEqual(['-i']);
+      expect(JSON.stringify(args)).not.toContain('secret');
+      expect(String(opts!.input)).toBe(
+        `add-generic-password -U -s google-workspace-mcp -a tokens -w ${b64({ access_token: 'secret' })}\n`,
+      );
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('clearTokens deletes the Keychain entry and any legacy file', async () => {
+      useKeychain();
+      vi.mocked(execFileSync).mockReturnValue(b64({ refresh_token: 'ref' }));
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+      const { clearTokens } = await import('../src/auth.js');
+      await clearTokens();
+      expect(execFileSync).toHaveBeenCalledWith(
+        'security',
+        ['delete-generic-password', '-s', 'google-workspace-mcp', '-a', 'tokens'],
+        expect.anything(),
+      );
+      expect(fs.unlink).toHaveBeenCalledWith(TOKENS_PATH);
+      vi.unstubAllGlobals();
     });
   });
 

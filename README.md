@@ -119,11 +119,11 @@ Claude Code picks the server up in new sessions. For Claude Desktop, fully quit 
 In a new Claude chat, say:
 > "Call the authorize tool"
 
-Claude will return a Google authorization URL. Open it in your browser, sign in, and grant access. Your browser will show "Authorization complete!" — you only need to do this once. Tokens are saved to `~/.google-workspace-mcp/tokens.json`.
+Claude will return a Google authorization URL. Open it in your browser, sign in, and grant access. Your browser will show "Authorization complete!" — you only need to do this once. On macOS, tokens are saved to the Keychain (service `google-workspace-mcp`, account `tokens`); elsewhere they are saved to `~/.google-workspace-mcp/tokens.json`. Set `GOOGLE_WORKSPACE_MCP_TOKEN_STORE=file` to force the file store on macOS.
 
 You can now use all Google Workspace tools in Claude.
 
-> **Upgrading?** If you previously authorized without Calendar support, delete `~/.google-workspace-mcp/tokens.json` and re-authorize to grant calendar permissions.
+> **Upgrading?** If you previously authorized without Calendar support, run the `authorize` tool again; it detects the stale grant, revokes it, and starts a fresh flow.
 
 ## Usage Examples
 
@@ -155,7 +155,7 @@ The project uses [vitest](https://vitest.dev/) for testing with mocked googleapi
 
 ## Token Storage
 
-OAuth tokens are stored locally at `~/.google-workspace-mcp/tokens.json`. They are never committed to this repository. To revoke access, delete that file or revoke the app in your [Google Account security settings](https://myaccount.google.com/permissions).
+OAuth tokens are stored locally, in the macOS Keychain or in `~/.google-workspace-mcp/tokens.json` on other platforms. An existing tokens file is migrated into the Keychain on first use and then deleted. They are never committed to this repository. To revoke access, run `security delete-generic-password -s google-workspace-mcp -a tokens` (or delete the file) or revoke the app in your [Google Account security settings](https://myaccount.google.com/permissions).
 
 ## Tech Stack
 

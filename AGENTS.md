@@ -3,7 +3,7 @@
 TypeScript MCP server: read/write Google Docs, Sheets, Drive, Calendar, and file comments (27 tools). Public repo; notes files stay local via exclude. Exists because official Google MCP servers still cannot edit Docs/Sheets in place.
 
 ## Must-nots / privacy
-- Never commit OAuth client secrets, tokens, or `~/.google-workspace-mcp/tokens.json`.
+- Never commit OAuth client secrets or tokens. Tokens live in the macOS Keychain (service `google-workspace-mcp`, account `tokens`) or `~/.google-workspace-mcp/tokens.json` elsewhere.
 - Do not commit `_brain.md` / `CLAUDE.md` into the public tree.
 - One token file = one account at a time today — authorizing another account replaces reach into the first.
 

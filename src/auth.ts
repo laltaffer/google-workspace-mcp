@@ -50,23 +50,92 @@ export function createOAuthClient(redirectUri?: string): OAuth2Client {
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
-export async function loadTokens(): Promise<object | null> {
+export const KEYCHAIN_TOKENS_ACCOUNT = 'tokens';
+
+// Tokens live in the macOS Keychain by default on darwin and in a 0600 file
+// elsewhere. GOOGLE_WORKSPACE_MCP_TOKEN_STORE=file|keychain overrides.
+function useKeychain(): boolean {
+  const override = process.env.GOOGLE_WORKSPACE_MCP_TOKEN_STORE;
+  if (override === 'file') return false;
+  if (override === 'keychain') return true;
+  return process.platform === 'darwin';
+}
+
+function keychainRead(): object | null {
   try {
-    const data = await fs.readFile(TOKENS_PATH, 'utf-8');
-    return JSON.parse(data);
+    const out = execFileSync(
+      'security',
+      ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_TOKENS_ACCOUNT, '-w'],
+      { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim();
+    return out ? JSON.parse(Buffer.from(out, 'base64').toString('utf-8')) : null;
   } catch {
     return null;
   }
 }
 
+// Writes through `security -i` so the token never appears in argv or `ps`.
+// Base64 keeps the JSON free of shell-quoting concerns in the command line.
+function keychainWrite(tokens: object): void {
+  const b64 = Buffer.from(JSON.stringify(tokens)).toString('base64');
+  execFileSync('security', ['-i'], {
+    input: `add-generic-password -U -s ${KEYCHAIN_SERVICE} -a ${KEYCHAIN_TOKENS_ACCOUNT} -w ${b64}\n`,
+    stdio: ['pipe', 'ignore', 'ignore'],
+  });
+}
+
+function keychainDelete(): void {
+  try {
+    execFileSync(
+      'security',
+      ['delete-generic-password', '-s', KEYCHAIN_SERVICE, '-a', KEYCHAIN_TOKENS_ACCOUNT],
+      { stdio: ['ignore', 'ignore', 'ignore'] },
+    );
+  } catch {
+    // No entry to delete.
+  }
+}
+
+async function fileRead(): Promise<object | null> {
+  try {
+    return JSON.parse(await fs.readFile(TOKENS_PATH, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+async function fileDelete(): Promise<void> {
+  try {
+    await fs.unlink(TOKENS_PATH);
+  } catch {
+    // Nothing to delete.
+  }
+}
+
+export async function loadTokens(): Promise<object | null> {
+  if (!useKeychain()) return fileRead();
+  const fromKeychain = keychainRead();
+  if (fromKeychain) return fromKeychain;
+  // One-time migration from the pre-Keychain file store.
+  const legacy = await fileRead();
+  if (!legacy) return null;
+  keychainWrite(legacy);
+  await fileDelete();
+  return legacy;
+}
+
 export async function saveTokens(tokens: object): Promise<void> {
+  if (useKeychain()) {
+    keychainWrite(tokens);
+    return;
+  }
   await fs.mkdir(path.dirname(TOKENS_PATH), { recursive: true, mode: 0o700 });
   await fs.writeFile(TOKENS_PATH, JSON.stringify(tokens, null, 2), { mode: 0o600 });
 }
 
-// Revokes the stored refresh token at Google (best effort) and deletes the
-// token file, so no dead credential is left on disk. Safe to call when no
-// file exists.
+// Revokes the stored refresh token at Google (best effort) and removes it
+// from every store, so no dead credential is left behind. Safe to call when
+// nothing is stored.
 export async function clearTokens(): Promise<void> {
   const tokens = (await loadTokens()) as { refresh_token?: string } | null;
   if (tokens?.refresh_token) {
@@ -77,14 +146,11 @@ export async function clearTokens(): Promise<void> {
         body: new URLSearchParams({ token: tokens.refresh_token }),
       });
     } catch {
-      // Already revoked or offline; deleting the file is what matters.
+      // Already revoked or offline; removing the credential is what matters.
     }
   }
-  try {
-    await fs.unlink(TOKENS_PATH);
-  } catch {
-    // Nothing to delete.
-  }
+  if (useKeychain()) keychainDelete();
+  await fileDelete();
 }
 
 // Turns Google's bare refresh failure into an actionable message. Tool error
