@@ -16,18 +16,64 @@ async function getDriveClient() {
   return google.drive({ version: 'v3', auth });
 }
 
-function extractText(content: docs_v1.Schema$StructuralElement[]): string {
+const HEADING_LEVEL: Record<string, number> = {
+  TITLE: 1, HEADING_1: 1, HEADING_2: 2, HEADING_3: 3, HEADING_4: 4, HEADING_5: 5, HEADING_6: 6,
+};
+
+function renderParagraph(p: docs_v1.Schema$Paragraph): string {
+  const text = (p.elements ?? [])
+    .map(el => {
+      const run = el.textRun;
+      if (!run?.content) return '';
+      const url = run.textStyle?.link?.url;
+      if (!url) return run.content;
+      // Keep a trailing newline outside the link so the line still terminates.
+      const body = run.content.replace(/\n$/, '');
+      return `[${body}](${url})${run.content.endsWith('\n') ? '\n' : ''}`;
+    })
+    .join('');
+  const level = HEADING_LEVEL[p.paragraphStyle?.namedStyleType ?? ''];
+  if (level) return `${'#'.repeat(level)} ${text}`;
+  if (p.bullet) return `${'  '.repeat(p.bullet.nestingLevel ?? 0)}- ${text}`;
+  return text;
+}
+
+function renderTable(t: docs_v1.Schema$Table, includeIndices: boolean): string {
+  const rows = (t.tableRows ?? []).map(r =>
+    (r.tableCells ?? []).map(c =>
+      extractText(c.content ?? [], includeIndices).replace(/\n+$/, '').replace(/\n/g, ' ').replace(/\|/g, '\\|'),
+    ),
+  );
+  if (rows.length === 0) return '';
+  const line = (cells: string[]) => `| ${cells.join(' | ')} |\n`;
+  const sep = `| ${rows[0].map(() => '---').join(' | ')} |\n`;
+  return line(rows[0]) + sep + rows.slice(1).map(line).join('');
+}
+
+// Renders the document body as markdown: headings, bullets (nested by
+// indentation), links, and tables. With includeIndices, each block is
+// prefixed with its startIndex ([@n]) so a caller can target batchUpdate
+// requests. Indices shift after every write, so re-read before editing.
+export function extractText(
+  content: docs_v1.Schema$StructuralElement[],
+  includeIndices = false,
+): string {
   return content
-    .flatMap(el => el.paragraph?.elements ?? [])
-    .map(el => el.textRun?.content ?? '')
+    .map(el => {
+      let out = '';
+      if (el.paragraph) out = renderParagraph(el.paragraph);
+      else if (el.table) out = renderTable(el.table, includeIndices);
+      if (!out) return '';
+      return includeIndices && el.startIndex != null ? `[@${el.startIndex}] ${out}` : out;
+    })
     .join('');
 }
 
-export async function getDoc(documentId: string): Promise<string> {
+export async function getDoc(documentId: string, includeIndices = false): Promise<string> {
   const docs = await getDocsClient();
   const res = await docs.documents.get({ documentId });
   const doc = res.data;
-  const text = extractText(doc.body?.content ?? []);
+  const text = extractText(doc.body?.content ?? [], includeIndices);
   return `Title: ${doc.title}\n\n[UNTRUSTED DOCUMENT CONTENT BELOW]\n${text}\n[END UNTRUSTED DOCUMENT CONTENT]`;
 }
 
@@ -73,6 +119,17 @@ export async function replaceInDoc(
   return `Replaced ${changed} occurrence(s) of "${oldText}" with "${newText}".`;
 }
 
+export async function batchUpdateDoc(
+  documentId: string,
+  requests: docs_v1.Schema$Request[],
+): Promise<string> {
+  const docs = await getDocsClient();
+  const res = await docs.documents.batchUpdate({ documentId, requestBody: { requests } });
+  const replies = (res.data.replies ?? []).filter(r => Object.keys(r).length > 0);
+  const detail = replies.length ? `\nReplies: ${JSON.stringify(replies)}` : '';
+  return `${requests.length} request(s) applied to document ${documentId}.${detail}`;
+}
+
 export async function deleteDoc(documentId: string): Promise<string> {
   const drive = await getDriveClient();
   await drive.files.update({ fileId: documentId, requestBody: { trashed: true } });
@@ -81,13 +138,14 @@ export async function deleteDoc(documentId: string): Promise<string> {
 
 export function registerDocsTools(server: McpServer): void {
   server.registerTool('docs_get', {
-    description: 'Read the full text content of a Google Doc',
+    description: 'Read a Google Doc as markdown: headings, bullets, links, and tables are preserved. Set includeIndices to prefix each block with its start index ([@n]) for use with docs_batch_update.',
     inputSchema: {
       documentId: z.string().describe('The document ID from its URL'),
+      includeIndices: z.boolean().optional().describe('Prefix each block with its startIndex for targeting edits'),
     },
-  }, async ({ documentId }) => {
+  }, async ({ documentId, includeIndices }) => {
     try {
-      return { content: [{ type: 'text', text: await getDoc(documentId) }] };
+      return { content: [{ type: 'text', text: await getDoc(documentId, includeIndices ?? false) }] };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return { content: [{ type: 'text', text: `Error reading document: ${msg}` }], isError: true };
@@ -136,6 +194,21 @@ export function registerDocsTools(server: McpServer): void {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return { content: [{ type: 'text', text: `Error replacing text: ${msg}` }], isError: true };
+    }
+  });
+
+  server.registerTool('docs_batch_update', {
+    description: 'Apply raw Google Docs API batchUpdate requests (insertText, updateParagraphStyle, createParagraphBullets, insertTable, updateTextStyle, etc.) for formatting and structured edits. Read the doc with docs_get includeIndices=true first: indices shift after every write, so apply requests in descending index order or re-read between calls.',
+    inputSchema: {
+      documentId: z.string().describe('The document ID'),
+      requests: z.array(z.record(z.unknown())).min(1).max(200).describe('Array of Docs API Request objects, applied in order'),
+    },
+  }, async ({ documentId, requests }) => {
+    try {
+      return { content: [{ type: 'text', text: await batchUpdateDoc(documentId, requests as docs_v1.Schema$Request[]) }] };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Error applying batch update: ${msg}` }], isError: true };
     }
   });
 
