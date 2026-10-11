@@ -7,8 +7,10 @@ import { execFileSync } from 'child_process';
 // Mock fs and googleapis before importing auth
 vi.mock('fs/promises');
 vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
+const mockAboutGet = vi.fn();
 vi.mock('googleapis', () => ({
   google: {
+    drive: vi.fn(() => ({ about: { get: mockAboutGet } })),
     auth: {
       OAuth2: vi.fn(function () { return {
         generateAuthUrl: vi.fn().mockReturnValue('https://accounts.google.com/o/oauth2/auth?mock'),
@@ -119,13 +121,15 @@ describe('auth', () => {
       expect(fs.writeFile).not.toHaveBeenCalled();
     });
 
-    it('clearTokens deletes the Keychain entry and any legacy file', async () => {
+    it('removing the last account deletes the Keychain entry and any legacy file', async () => {
       useKeychain();
-      vi.mocked(execFileSync).mockReturnValue(b64({ refresh_token: 'ref' }));
+      vi.mocked(execFileSync).mockReturnValue(
+        b64({ default: 'a@x.com', accounts: { 'a@x.com': { refresh_token: 'ref' } } }),
+      );
       vi.mocked(fs.unlink).mockResolvedValue(undefined);
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
-      const { clearTokens } = await import('../src/auth.js');
-      await clearTokens();
+      const { removeAccount } = await import('../src/auth.js');
+      await removeAccount('a@x.com');
       expect(execFileSync).toHaveBeenCalledWith(
         'security',
         ['delete-generic-password', '-s', 'google-workspace-mcp', '-a', 'tokens'],
@@ -144,38 +148,88 @@ describe('auth', () => {
     });
   });
 
-  describe('clearTokens', () => {
-    it('revokes the refresh token and deletes the tokens file', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ refresh_token: 'ref' }));
-      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+  describe('multi-account store', () => {
+    const store = (o: object) => vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(o));
+    const written = () => JSON.parse(String(vi.mocked(fs.writeFile).mock.calls.at(-1)![1]));
+    const two = {
+      default: 'a@x.com',
+      accounts: { 'a@x.com': { refresh_token: 'ra' }, 'b@x.com': { refresh_token: 'rb' } },
+    };
+
+    it('migrates a bare legacy credential into a one-account store', async () => {
+      store({ access_token: 'old', refresh_token: 'r' });
+      mockAboutGet.mockResolvedValue({ data: { user: { emailAddress: 'Me@Gmail.com' } } });
+      const { loadStore } = await import('../src/auth.js');
+      const s = await loadStore();
+      expect(s).toEqual({ default: 'me@gmail.com', accounts: { 'me@gmail.com': { access_token: 'old', refresh_token: 'r' } } });
+      expect(written()).toEqual(s);
+    });
+
+    it('leaves a dead legacy credential unmigrated', async () => {
+      store({ refresh_token: 'dead' });
+      mockAboutGet.mockRejectedValue(new Error('invalid_grant'));
+      const { loadStore } = await import('../src/auth.js');
+      expect(await loadStore()).toEqual({ accounts: {} });
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('getAuthenticatedClient uses the default account, or the one set by withAccount', async () => {
+      store(two);
+      const { getAuthenticatedClient, withAccount } = await import('../src/auth.js');
+      const def = await getAuthenticatedClient();
+      expect(vi.mocked(def!.setCredentials)).toHaveBeenCalledWith({ refresh_token: 'ra' });
+      const b = await withAccount('B@x.com', getAuthenticatedClient);
+      expect(vi.mocked(b!.setCredentials)).toHaveBeenCalledWith({ refresh_token: 'rb' });
+    });
+
+    it('getAuthenticatedClient names known accounts when asked for an unknown one', async () => {
+      store(two);
+      const { getAuthenticatedClient, withAccount } = await import('../src/auth.js');
+      await expect(withAccount('c@x.com', getAuthenticatedClient)).rejects.toThrow(
+        /No stored credentials for c@x.com\. Authorized accounts: a@x.com, b@x.com/,
+      );
+    });
+
+    it('getAuthenticatedClient returns null when nothing is authorized', async () => {
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
+      const { getAuthenticatedClient } = await import('../src/auth.js');
+      expect(await getAuthenticatedClient()).toBeNull();
+    });
+
+    it('saveAccount adds an account without changing the default', async () => {
+      store({ default: 'a@x.com', accounts: { 'a@x.com': { refresh_token: 'ra' } } });
+      const { saveAccount } = await import('../src/auth.js');
+      await saveAccount('B@x.com', { refresh_token: 'rb' });
+      expect(written()).toEqual(two);
+    });
+
+    it('saveAccount makes the first account the default', async () => {
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
+      const { saveAccount } = await import('../src/auth.js');
+      await saveAccount('a@x.com', { refresh_token: 'ra' });
+      expect(written()).toEqual({ default: 'a@x.com', accounts: { 'a@x.com': { refresh_token: 'ra' } } });
+    });
+
+    it('removeAccount revokes only that account and reassigns the default', async () => {
+      store(two);
       const fetchMock = vi.fn().mockResolvedValue({ ok: true });
       vi.stubGlobal('fetch', fetchMock);
-      const { clearTokens } = await import('../src/auth.js');
-      await clearTokens();
-      expect(fetchMock).toHaveBeenCalledWith(
-        'https://oauth2.googleapis.com/revoke',
-        expect.objectContaining({ method: 'POST' }),
-      );
-      expect(String(fetchMock.mock.calls[0][1].body)).toBe('token=ref');
-      expect(fs.unlink).toHaveBeenCalledWith(TOKENS_PATH);
+      const { removeAccount } = await import('../src/auth.js');
+      await removeAccount('a@x.com');
+      expect(String(fetchMock.mock.calls[0][1].body)).toBe('token=ra');
+      expect(written()).toEqual({ default: 'b@x.com', accounts: { 'b@x.com': { refresh_token: 'rb' } } });
+      expect(fs.unlink).not.toHaveBeenCalled();
       vi.unstubAllGlobals();
     });
 
-    it('still deletes the file when revocation fails', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ refresh_token: 'ref' }));
+    it('removeAccount deletes the store when the last account goes, even if revoke fails', async () => {
+      store({ default: 'a@x.com', accounts: { 'a@x.com': { refresh_token: 'ra' } } });
       vi.mocked(fs.unlink).mockResolvedValue(undefined);
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-      const { clearTokens } = await import('../src/auth.js');
-      await expect(clearTokens()).resolves.toBeUndefined();
+      const { removeAccount } = await import('../src/auth.js');
+      await expect(removeAccount('a@x.com')).resolves.toBeUndefined();
       expect(fs.unlink).toHaveBeenCalledWith(TOKENS_PATH);
       vi.unstubAllGlobals();
-    });
-
-    it('does not throw when there is no tokens file', async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
-      vi.mocked(fs.unlink).mockRejectedValue(new Error('ENOENT'));
-      const { clearTokens } = await import('../src/auth.js');
-      await expect(clearTokens()).resolves.toBeUndefined();
     });
   });
 

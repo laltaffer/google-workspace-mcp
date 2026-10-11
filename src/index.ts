@@ -1,6 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { startAuthFlow, getAuthenticatedClient, validateCredentials, clearTokens } from './auth.js';
+import { z } from 'zod';
+import {
+  startAuthFlow, getAuthenticatedClient, validateCredentials, removeAccount, loadStore, withAccount,
+} from './auth.js';
+import { addAccountArgument } from './account-arg.js';
 import { registerDriveTools } from './tools/drive.js';
 import { registerDocsTools } from './tools/docs.js';
 import { registerSheetsTools } from './tools/sheets.js';
@@ -13,26 +17,47 @@ const server = new McpServer({
 });
 
 server.registerTool('authorize', {
-  description: 'Start Google OAuth2 authorization. Returns a URL to open in your browser. The server will capture the token automatically when you complete authorization.',
-  inputSchema: {},
-}, async () => {
-  const existing = await getAuthenticatedClient();
-  if (existing && await validateCredentials(existing)) {
-    return { content: [{ type: 'text' as const, text: 'Already authorized. You can use Google Workspace tools.' }] };
+  description: 'Authorize a Google account. Returns a URL to open in your browser; the token is captured automatically. Pass account to add or re-authorize a specific account; several accounts can be authorized at once.',
+  inputSchema: {
+    account: z.string().email().optional().describe('Email of the account to authorize. Omit to check the default account.'),
+  },
+}, async ({ account }) => {
+  const store = await loadStore();
+  const target = account?.toLowerCase() ?? store.default;
+  let stale = false;
+  if (target && store.accounts[target]) {
+    const client = await withAccount(target, getAuthenticatedClient);
+    if (client && await validateCredentials(client)) {
+      const hint = account ? '' : ' To add another account, call authorize with its email.';
+      return { content: [{ type: 'text' as const, text: `Already authorized as ${target}.${hint}` }] };
+    }
+    // Revoked or expired: remove it so it stops masquerading as valid.
+    await removeAccount(target);
+    stale = true;
   }
-  // Stored tokens are unusable (commonly a revoked refresh token). Move them
-  // aside so they stop masquerading as valid credentials, then re-authorize.
-  const stale = existing !== null;
-  if (stale) await clearTokens();
-  const authUrl = await startAuthFlow();
-  const prefix = stale ? 'Stored credentials are no longer valid (revoked or expired).\n\n' : '';
+  const authUrl = await startAuthFlow(account);
+  const prefix = stale ? `Stored credentials for ${target} are no longer valid (revoked or expired).\n\n` : '';
   return {
     content: [{
       type: 'text' as const,
-      text: `${prefix}Open this URL in your browser to authorize:\n\n${authUrl}\n\nAfter authorizing, you can use all Google Workspace tools.`,
+      text: `${prefix}Open this URL in your browser to authorize${account ? ` ${account}` : ''}:\n\n${authUrl}\n\nChoose the account in Google's picker. After authorizing, pass account to any tool to act as it.`,
     }],
   };
 });
+
+server.registerTool('accounts_list', {
+  description: 'List the Google accounts this server holds credentials for, and which one is the default.',
+  inputSchema: {},
+}, async () => {
+  const store = await loadStore();
+  const emails = Object.keys(store.accounts);
+  const text = emails.length
+    ? emails.map(e => `${e}${e === store.default ? ' (default)' : ''}`).join('\n')
+    : 'No accounts authorized. Call authorize.';
+  return { content: [{ type: 'text' as const, text }] };
+});
+
+addAccountArgument(server);
 
 registerDriveTools(server);
 registerDocsTools(server);

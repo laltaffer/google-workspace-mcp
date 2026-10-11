@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
+import { OAuth2Client, type Credentials } from 'google-auth-library';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
@@ -133,24 +134,90 @@ export async function saveTokens(tokens: object): Promise<void> {
   await fs.writeFile(TOKENS_PATH, JSON.stringify(tokens, null, 2), { mode: 0o600 });
 }
 
-// Revokes the stored refresh token at Google (best effort) and removes it
-// from every store, so no dead credential is left behind. Safe to call when
-// nothing is stored.
-export async function clearTokens(): Promise<void> {
-  const tokens = (await loadTokens()) as { refresh_token?: string } | null;
-  if (tokens?.refresh_token) {
-    try {
-      await fetch('https://oauth2.googleapis.com/revoke', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ token: tokens.refresh_token }),
-      });
-    } catch {
-      // Already revoked or offline; removing the credential is what matters.
-    }
-  }
+// One credential per Google account, keyed by lowercase email. `default` is
+// the account tools act as when no account argument is given.
+export interface TokenStore {
+  default?: string;
+  accounts: Record<string, Credentials>;
+}
+
+async function deleteAllTokens(): Promise<void> {
   if (useKeychain()) keychainDelete();
   await fileDelete();
+}
+
+async function revokeToken(refreshToken?: string | null): Promise<void> {
+  if (!refreshToken) return;
+  try {
+    await fetch('https://oauth2.googleapis.com/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: refreshToken }),
+    });
+  } catch {
+    // Already revoked or offline; removing the credential is what matters.
+  }
+}
+
+// Asks Drive which account a credential belongs to. Covered by the drive
+// scope, so no extra consent is needed.
+export async function resolveEmail(client: OAuth2Client): Promise<string> {
+  const res = await google.drive({ version: 'v3', auth: client }).about.get({ fields: 'user(emailAddress)' });
+  const email = res.data.user?.emailAddress;
+  if (!email) throw new Error('Google did not return an email address for this account.');
+  return email.toLowerCase();
+}
+
+export async function loadStore(): Promise<TokenStore> {
+  const raw = (await loadTokens()) as (TokenStore & Credentials) | null;
+  if (!raw) return { accounts: {} };
+  if (raw.accounts) return raw;
+  // Pre-multi-account shape: one bare credential. Find out whose it is and
+  // rewrite it as a one-account store. If the credential is dead, it is
+  // left alone and the next authorize overwrites it.
+  try {
+    const client = createOAuthClient();
+    client.setCredentials(raw);
+    const email = await resolveEmail(client);
+    const store: TokenStore = { default: email, accounts: { [email]: raw } };
+    await saveTokens(store);
+    return store;
+  } catch {
+    return { accounts: {} };
+  }
+}
+
+export async function saveAccount(email: string, tokens: Credentials): Promise<void> {
+  const store = await loadStore();
+  const key = email.toLowerCase();
+  store.accounts[key] = { ...store.accounts[key], ...tokens };
+  store.default ??= key;
+  await saveTokens(store);
+}
+
+// Revokes one account's refresh token at Google (best effort) and removes it
+// from the store. When no accounts remain, the store itself is deleted so no
+// dead credential is left behind.
+export async function removeAccount(email: string): Promise<void> {
+  const store = await loadStore();
+  const key = email.toLowerCase();
+  await revokeToken(store.accounts[key]?.refresh_token);
+  delete store.accounts[key];
+  const remaining = Object.keys(store.accounts);
+  if (remaining.length === 0) {
+    await deleteAllTokens();
+    return;
+  }
+  if (store.default === key) store.default = remaining[0];
+  await saveTokens(store);
+}
+
+// The account a tool call acts as, set per call by withAccount so tool code
+// never has to thread it through.
+const currentAccount = new AsyncLocalStorage<string | undefined>();
+
+export function withAccount<T>(account: string | undefined, fn: () => T): T {
+  return currentAccount.run(account?.toLowerCase(), fn);
 }
 
 // Turns Google's bare refresh failure into an actionable message. Tool error
@@ -158,7 +225,7 @@ export async function clearTokens(): Promise<void> {
 export function describeError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/invalid_grant|invalid_rapt|Token has been expired or revoked/i.test(msg)) {
-    return 'Stored credentials have expired or been revoked. Run the authorize tool to sign in again.';
+    return 'Stored credentials have expired or been revoked. Run the authorize tool (with the same account argument) to sign in again.';
   }
   return msg;
 }
@@ -177,22 +244,29 @@ export async function validateCredentials(client: OAuth2Client): Promise<boolean
   }
 }
 
+// Returns a client for the account set by withAccount, or the default
+// account. Null means nothing is authorized yet.
 export async function getAuthenticatedClient(): Promise<OAuth2Client | null> {
-  const tokens = await loadTokens();
-  if (!tokens) return null;
+  const store = await loadStore();
+  const email = currentAccount.getStore() ?? store.default;
+  if (!email) return null;
+  const tokens = store.accounts[email];
+  if (!tokens) {
+    const known = Object.keys(store.accounts).join(', ') || 'none';
+    throw new Error(
+      `No stored credentials for ${email}. Authorized accounts: ${known}. Run authorize with account "${email}" to add it.`,
+    );
+  }
   const client = createOAuthClient();
   client.setCredentials(tokens);
   // Persist refreshed tokens automatically
-  client.on('tokens', async (newTokens) => {
-    const existing = await loadTokens() ?? {};
-    await saveTokens({ ...existing, ...newTokens });
-  });
+  client.on('tokens', (newTokens) => saveAccount(email, newTokens));
   return client;
 }
 
 // Starts a local HTTP server on a random available port bound to localhost only.
 // Returns the auth URL. Token is saved when the user completes the OAuth flow.
-export async function startAuthFlow(): Promise<string> {
+export async function startAuthFlow(loginHint?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const server = http.createServer();
 
@@ -205,8 +279,10 @@ export async function startAuthFlow(): Promise<string> {
       const authUrl = client.generateAuthUrl({
         access_type: 'offline',
         scope: SCOPES,
-        prompt: 'consent',
+        // select_account lets the user pick which Google account to add.
+        prompt: 'consent select_account',
         state,
+        ...(loginHint ? { login_hint: loginHint } : {}),
       });
 
       server.on('request', async (req, res) => {
@@ -237,9 +313,11 @@ export async function startAuthFlow(): Promise<string> {
 
         try {
           const { tokens } = await client.getToken(code);
-          await saveTokens(tokens);
-          res.writeHead(200, { 'Content-Type': 'text/html', ...secHeaders });
-          res.end('<h2>Authorization complete! You can close this tab and return to Claude.</h2>');
+          client.setCredentials(tokens);
+          const email = await resolveEmail(client);
+          await saveAccount(email, tokens);
+          res.writeHead(200, { 'Content-Type': 'text/plain', ...secHeaders });
+          res.end(`Authorization complete for ${email}. You can close this tab and return to Claude.`);
         } catch {
           res.writeHead(500, { 'Content-Type': 'text/plain', ...secHeaders });
           res.end('Authorization failed. Please try again.');
