@@ -7,10 +7,11 @@ A TypeScript MCP (Model Context Protocol) server that gives Claude read/write ac
 ## Features
 
 **Google Docs**
-- `docs_get` — Read full document content
+- `docs_get` — Read a document as markdown (headings, bullets, links, tables), optionally with edit indices
 - `docs_create` — Create a new document
 - `docs_append` — Append text to a document
 - `docs_replace` — Find and replace text
+- `docs_batch_update` — Apply raw Docs API requests for formatting and structural edits
 - `docs_delete` — Move a document to trash
 
 **Google Sheets**
@@ -42,6 +43,12 @@ A TypeScript MCP (Model Context Protocol) server that gives Claude read/write ac
 - `comments_list` — List open comments with their replies (`includeResolved` to see all)
 - `comments_get` — Get one comment and its full thread
 - `comments_reply` — Reply to a comment, optionally resolving it
+
+**Accounts**
+- `authorize` — Sign in a Google account (pass `account` to add another)
+- `accounts_list` — Show authorized accounts and the default
+
+Every other tool takes an optional `account` argument (an email). Without it, the tool acts as the default account, which is the first one authorized.
 
 ## Prerequisites
 
@@ -123,7 +130,9 @@ Claude will return a Google authorization URL. Open it in your browser, sign in,
 
 You can now use all Google Workspace tools in Claude.
 
-> **Upgrading?** If you previously authorized without Calendar support, run the `authorize` tool again; it detects the stale grant, revokes it, and starts a fresh flow.
+**More than one account.** Ask Claude to "authorize laltaffer@example.com" (any email); the tool passes it to Google's account picker. Each account gets its own token, and adding one never signs out another. Then name the account in a request, e.g. "list my Drive files in my work account."
+
+> **Upgrading?** A token stored by an older version is migrated to the multi-account store on first use. If you previously authorized without Calendar support, run the `authorize` tool again; it detects the stale grant, revokes it, and starts a fresh flow.
 
 ## Usage Examples
 
@@ -151,11 +160,11 @@ npm run test:watch  # watch mode
 npm run build     # compile TypeScript
 ```
 
-The project uses [vitest](https://vitest.dev/) for testing with mocked googleapis clients. 41 tests across auth, Drive, Docs, Sheets, Calendar, and Comments modules.
+The project uses [vitest](https://vitest.dev/) for testing with mocked googleapis clients, covering auth, accounts, Drive, Docs, Sheets, Calendar, and Comments.
 
 ## Token Storage
 
-OAuth tokens are stored locally, in the macOS Keychain or in `~/.google-workspace-mcp/tokens.json` on other platforms. An existing tokens file is migrated into the Keychain on first use and then deleted. They are never committed to this repository. To revoke access, run `security delete-generic-password -s google-workspace-mcp -a tokens` (or delete the file) or revoke the app in your [Google Account security settings](https://myaccount.google.com/permissions).
+OAuth tokens are stored locally, one per authorized account, in the macOS Keychain or in `~/.google-workspace-mcp/tokens.json` on other platforms. An existing tokens file is migrated into the Keychain on first use and then deleted. They are never committed to this repository. To revoke every account, run `security delete-generic-password -s google-workspace-mcp -a tokens` (or delete the file), or revoke the app in your [Google Account security settings](https://myaccount.google.com/permissions).
 
 ## Tech Stack
 
