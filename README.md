@@ -79,11 +79,15 @@ npm run build
 **Claude Code** — one command, user scope so it loads in every project:
 
 ```bash
+# macOS: keep the secret out of the config file by storing it in the Keychain
+security add-generic-password -s google-workspace-mcp -a client-secret -w your-client-secret
+
 claude mcp add google-workspace --scope user \
   -e GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com \
-  -e GOOGLE_CLIENT_SECRET=your-client-secret \
   -- node /absolute/path/to/google-workspace-mcp/dist/index.js
 ```
+
+On other platforms, or if you skip the Keychain step, pass `-e GOOGLE_CLIENT_SECRET=your-client-secret` as well. Note that `claude mcp get` prints env values, so prefer the Keychain where available.
 
 **Claude Desktop** — add the following to your config file:
 
@@ -97,15 +101,14 @@ claude mcp add google-workspace --scope user \
       "command": "node",
       "args": ["/absolute/path/to/google-workspace-mcp/dist/index.js"],
       "env": {
-        "GOOGLE_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
-        "GOOGLE_CLIENT_SECRET": "your-client-secret"
+        "GOOGLE_CLIENT_ID": "your-client-id.apps.googleusercontent.com"
       }
     }
   }
 }
 ```
 
-Replace `/absolute/path/to/google-workspace-mcp` with the actual path where you cloned the repo.
+Replace `/absolute/path/to/google-workspace-mcp` with the actual path where you cloned the repo. Add `"GOOGLE_CLIENT_SECRET": "your-client-secret"` to `env` only if you did not store the secret in the macOS Keychain.
 
 ### 4. Restart the client
 

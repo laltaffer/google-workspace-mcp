@@ -64,13 +64,26 @@ export async function saveTokens(tokens: object): Promise<void> {
   await fs.writeFile(TOKENS_PATH, JSON.stringify(tokens, null, 2), { mode: 0o600 });
 }
 
-// Moves an unusable token file aside so a stale file cannot keep reporting
-// "authorized" or block a fresh auth flow. Safe to call when no file exists.
+// Revokes the stored refresh token at Google (best effort) and deletes the
+// token file, so no dead credential is left on disk. Safe to call when no
+// file exists.
 export async function clearTokens(): Promise<void> {
+  const tokens = (await loadTokens()) as { refresh_token?: string } | null;
+  if (tokens?.refresh_token) {
+    try {
+      await fetch('https://oauth2.googleapis.com/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token: tokens.refresh_token }),
+      });
+    } catch {
+      // Already revoked or offline; deleting the file is what matters.
+    }
+  }
   try {
-    await fs.rename(TOKENS_PATH, `${TOKENS_PATH}.invalid`);
+    await fs.unlink(TOKENS_PATH);
   } catch {
-    // Nothing to move aside.
+    // Nothing to delete.
   }
 }
 

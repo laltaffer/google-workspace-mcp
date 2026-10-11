@@ -10,12 +10,12 @@ vi.mock('child_process', () => ({ execFileSync: vi.fn() }));
 vi.mock('googleapis', () => ({
   google: {
     auth: {
-      OAuth2: vi.fn().mockImplementation(() => ({
+      OAuth2: vi.fn(function () { return {
         generateAuthUrl: vi.fn().mockReturnValue('https://accounts.google.com/o/oauth2/auth?mock'),
         getToken: vi.fn().mockResolvedValue({ tokens: { access_token: 'tok', refresh_token: 'ref' } }),
         setCredentials: vi.fn(),
         on: vi.fn(),
-      })),
+      }; }),
     },
   },
 }));
@@ -64,15 +64,35 @@ describe('auth', () => {
   });
 
   describe('clearTokens', () => {
-    it('moves the tokens file aside', async () => {
-      vi.mocked(fs.rename).mockResolvedValue(undefined);
+    it('revokes the refresh token and deletes the tokens file', async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ refresh_token: 'ref' }));
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal('fetch', fetchMock);
       const { clearTokens } = await import('../src/auth.js');
       await clearTokens();
-      expect(fs.rename).toHaveBeenCalledWith(TOKENS_PATH, `${TOKENS_PATH}.invalid`);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://oauth2.googleapis.com/revoke',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(String(fetchMock.mock.calls[0][1].body)).toBe('token=ref');
+      expect(fs.unlink).toHaveBeenCalledWith(TOKENS_PATH);
+      vi.unstubAllGlobals();
+    });
+
+    it('still deletes the file when revocation fails', async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ refresh_token: 'ref' }));
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+      const { clearTokens } = await import('../src/auth.js');
+      await expect(clearTokens()).resolves.toBeUndefined();
+      expect(fs.unlink).toHaveBeenCalledWith(TOKENS_PATH);
+      vi.unstubAllGlobals();
     });
 
     it('does not throw when there is no tokens file', async () => {
-      vi.mocked(fs.rename).mockRejectedValue(new Error('ENOENT'));
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
+      vi.mocked(fs.unlink).mockRejectedValue(new Error('ENOENT'));
       const { clearTokens } = await import('../src/auth.js');
       await expect(clearTokens()).resolves.toBeUndefined();
     });
