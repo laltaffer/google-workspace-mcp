@@ -5,6 +5,7 @@ import {
   startAuthFlow, getAuthenticatedClient, validateCredentials, removeAccount, loadStore, withAccount,
 } from './auth.js';
 import { addAccountArgument } from './account-arg.js';
+import { exitWhenUnused } from './lifecycle.js';
 import { registerDriveTools } from './tools/drive.js';
 import { registerDocsTools } from './tools/docs.js';
 import { registerSheetsTools } from './tools/sheets.js';
@@ -67,3 +68,4 @@ registerCommentsTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+exitWhenUnused(process.stdin, Number(process.env.MCP_IDLE_EXIT_MINUTES) || undefined);

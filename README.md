@@ -115,7 +115,9 @@ On other platforms, or if you skip the Keychain step, pass `-e GOOGLE_CLIENT_SEC
 }
 ```
 
-Replace `/absolute/path/to/google-workspace-mcp` with the actual path where you cloned the repo. Add `"GOOGLE_CLIENT_SECRET": "your-client-secret"` to `env` only if you did not store the secret in the macOS Keychain.
+Replace `/absolute/path/to/google-workspace-mcp` with the actual path where you cloned the repo.
+
+**Idle exit.** The server exits when its client disconnects. Clients that start one server per thread and keep them all running (the Codex app does this) should also set `MCP_IDLE_EXIT_MINUTES`, for example `"30"`, so idle servers exit instead of accumulating. Add `"GOOGLE_CLIENT_SECRET": "your-client-secret"` to `env` only if you did not store the secret in the macOS Keychain.
 
 ### 4. Restart the client
 
