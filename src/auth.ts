@@ -272,7 +272,9 @@ export async function startAuthFlow(loginHint?: string): Promise<string> {
 
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as AddressInfo).port;
-      const redirectUri = `http://localhost:${port}/callback`;
+      // Use the literal IPv4 loopback: the server binds 127.0.0.1 only, and
+      // "localhost" can resolve to ::1 first, which nothing is listening on.
+      const redirectUri = `http://127.0.0.1:${port}/callback`;
       const client = createOAuthClient(redirectUri);
       const state = crypto.randomBytes(32).toString('hex');
 
@@ -286,7 +288,7 @@ export async function startAuthFlow(loginHint?: string): Promise<string> {
       });
 
       server.on('request', async (req, res) => {
-        const url = new URL(req.url!, `http://localhost:${port}`);
+        const url = new URL(req.url!, `http://127.0.0.1:${port}`);
         const secHeaders = {
           'X-Content-Type-Options': 'nosniff',
           'Content-Security-Policy': "default-src 'none'",
