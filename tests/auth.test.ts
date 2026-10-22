@@ -279,19 +279,22 @@ describe('auth', () => {
       expect(() => createOAuthClient()).toThrow('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
     });
 
-    it('falls back to the macOS Keychain when the secret env var is unset', async () => {
+    it('uses the secret Keychain fallback only on macOS', async () => {
       vi.stubEnv('GOOGLE_CLIENT_SECRET', '');
       vi.mocked(execFileSync).mockReturnValue('keychain-secret\n' as any);
       const { google } = await import('googleapis');
       const { createOAuthClient } = await import('../src/auth.js');
-      createOAuthClient();
       if (process.platform === 'darwin') {
+        createOAuthClient();
         expect(execFileSync).toHaveBeenCalledWith(
           'security',
           ['find-generic-password', '-s', 'google-workspace-mcp', '-a', 'client-secret', '-w'],
           expect.anything(),
         );
         expect(google.auth.OAuth2).toHaveBeenCalledWith('test-client-id', 'keychain-secret', undefined);
+      } else {
+        expect(() => createOAuthClient()).toThrow('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
+        expect(execFileSync).not.toHaveBeenCalled();
       }
     });
 
